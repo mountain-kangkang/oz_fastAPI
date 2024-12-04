@@ -1,4 +1,10 @@
-from fastapi import FastAPI, Query, Path
+from datetime import datetime
+
+from fastapi import FastAPI, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
+from starlette.responses import JSONResponse
 
 from item import router as item_router
 from member import router as member_router
@@ -6,32 +12,44 @@ app = FastAPI()
 app.include_router(item_router.router)
 app.include_router(member_router.router)
 
+@app.exception_handler(RequestValidationError)
+def validation_exception_handler(request, exc):
+    return JSONResponse(
+        content={"error": exc.errors()[0]['msg']},
+        status_code=status.HTTP_400_BAD_REQUEST,
+    )
+
+@app.exception_handler(ValueError)
+def value_error_handler(request, exc):
+    return JSONResponse(
+        content={"error": str(exc)},
+        status_code=status.HTTP_400_BAD_REQUEST,
+    )
+
+
 @app.get("/")
 def health_handler():
     return {"ping": "pong"}
 
+# @app.post("/images")
+# def upload_image_handler(file: UploadFile):
+#     return {
+#         "filename": file.filename,
+#         "content_type": file.content_type,
+#         "file_size": file.size,
+#     }
 
-# items = [
-#     {"id": 1, "price":500, "name": "i_phone"},
-#     {"id": 2, "price": 1000, "name": "galaxy"},
-#     {"id": 3, "price": 2000, "name": "i-pad"},
-# ]
 
-# http://127.0.0.1/items
-# http://127.0.0.1/items?max_price=10000
-# http://127.0.0.1/items?max_price=10000&min_price=1000
-# @app.get("/items/{item_id}")
-# def item_handler(
-#     # max_price: int | None = None,
-#     # min_price: int | None = Query(default=None, gt=100, lte=10_000),
-#     item_id: int = Path(default=..., gte=1, lt=1000),  # 1~999
-# ):
-#     for item in items:
-#         if item["id"] == item_id:
-#             return item
-#     return None
+class NowResponse(BaseModel):
+    now: datetime
 
-# http://127.0.0.1:8000/items?q=foo&q=bar
-# @app.get("/items")
-# def item_handler(q: list = Query(default=[])):
-#     return q if q else None
+@app.get(
+    "/now",
+    response_model=NowResponse,
+    description="## 설명\n현재 시간을 반환하는 API입니다.",
+    status_code=status.HTTP_200_OK,
+)
+def now_handler():
+    # content = f"<html><body><h1>now: {datetime.now()}</h1></body></html>"
+    # return HTMLResponse(content=content)
+    return NowResponse(now=datetime.now())
