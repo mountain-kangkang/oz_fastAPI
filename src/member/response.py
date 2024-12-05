@@ -8,3 +8,6 @@ class UserMeResponse(BaseModel):        # 내 정보를 반환할 때
 
 class UserResponse(BaseModel):
     username: str
+
+class JWTResponse(BaseModel):
+    access_token: str
