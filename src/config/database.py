@@ -23,3 +23,10 @@ SessionFactory = sessionmaker(
 )
 
 Base = declarative_base()
+
+def get_session():
+    session = SessionFactory()
+    try:
+        yield session
+    finally:
+        session.close()

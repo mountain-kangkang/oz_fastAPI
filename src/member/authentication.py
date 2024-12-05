@@ -54,4 +54,4 @@ def authenticate(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token expired",
         )
-    return payload
+    return payload["username"]
