@@ -1,16 +1,15 @@
-import asyncio
-from fastapi import APIRouter, Path, Body, status, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, Path, Body, status, HTTPException, Depends
 from fastapi.security import HTTPBasicCredentials, HTTPBasic
-from sqlalchemy.orm import Session
+from sqlalchemy import select, delete
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from config.database import get_session
+from config.database_async import get_async_session
 from member.authentication import check_password, encode_access_token, authenticate
 from member.models import Member
-from member.repository import MemberRepository
 from member.request import SignUpRequestBody
 from member.response import UserMeResponse, UserResponse, JWTResponse
 
-router = APIRouter(prefix="/members", tags=["SnycMember"])
+router = APIRouter(prefix="/members", tags=["AsyncMember"])
 
 
 @router.post(
@@ -18,21 +17,14 @@ router = APIRouter(prefix="/members", tags=["SnycMember"])
     response_model=UserMeResponse,
     status_code=status.HTTP_201_CREATED
 )
-async def sign_up_handler(
-    body: SignUpRequestBody,
-    background_tasks: BackgroundTasks,
-    # session: Session = Depends(get_session),
-    member_repo: MemberRepository = Depends(),
-    # == member_repo: MemberRepository = Depends(MemberRepository),
-):
+async def sign_up_handler(body: SignUpRequestBody, session: AsyncSession = Depends(get_async_session)):
     new_member = Member.create(
         username=body.username,
         password=body.password,
     )
-    member_repo.save(new_member)
-    background_tasks.add_task(
-        send_welcome_email, username=new_member.username
-    )
+
+    session.add(new_member)
+    await session.commit()
 
     return UserMeResponse(
         id=new_member.id,
@@ -40,23 +32,29 @@ async def sign_up_handler(
         password=new_member.password,
     )
 
-async def send_welcome_email(username):
-    await asyncio.sleep(5)
-    print(f"{username}님 회원가입을 환영합니다!")
-
 @router.post(
     "/login",
     response_model=JWTResponse,
     status_code=status.HTTP_200_OK
 )
-def login_handler(
+async def login_handler(
     credentials: HTTPBasicCredentials = Depends(HTTPBasic()),
-    # session: Session = Depends(get_session),
-    member_repo: MemberRepository = Depends(),
+    session: AsyncSession = Depends(get_async_session),
 ):
-    # member: Member | None = member_repo.get_member_by_username(username=credentials.username)
+    # 1) DB에서 데이터 조회 -> I/O 발생
+    result = await session.execute(
+        select(Member).filter(Member.username == credentials.username)
+    )
+    # 2) FastAPI 서버 상에서
+    member: Member | None = result.scalars().first()
+    # await -> I/O 대기가 발생하는 순간 = DB랑 실제로 통신하는 수간
+    # .close() / .commit()
 
-    if member:= member_repo.get_member_by_username(username=credentials.username):
+    # ORM 데이터를 조회하는 것은
+    # 1) DB랑 통신
+    # 2) sqlalchemy DB에서 가져온 데이터를 member 객체로 변환
+
+    if member:
         if check_password(
                 plain_text=credentials.password,
                 hashed_password=member.password,
@@ -72,14 +70,16 @@ def login_handler(
     )
 
 @router.get("/me")
-def get_me_handler(
+async def get_me_handler(
     username: str = Depends(authenticate),
-    # session: Session = Depends(get_session),
-    member_repo: MemberRepository = Depends(),
+    session: AsyncSession = Depends(get_async_session),
 ):
-    # member: Member | None = member_repo.get_member_by_username(username=username)
+    result = await session.execute(
+        select(Member).filter(Member.username == username)
+    )
+    member: Member | None = result.scalars().first()
 
-    if member:= member_repo.get_member_by_username(username=username):
+    if member:
         return UserMeResponse(
             id=member.id,
             username=member.username,
@@ -95,17 +95,20 @@ def get_me_handler(
     response_model=UserMeResponse,
     status_code=status.HTTP_200_OK
 )
-def update_user_handler(
+async def update_user_handler(
     username: str = Depends(authenticate),
     new_password: str = Body(..., embed=True),
-    # session: Session = Depends(get_session),
-    member_repo: MemberRepository = Depends(),
+    session: AsyncSession = Depends(get_async_session),
 ):
-    # member: Member | None = member_repo.get_member_by_username(username=username)
+    result = await session.execute(
+        select(Member).filter(Member.username == username)
+    )
+    member: Member | None = result.scalars().first()
 
-    if member := member_repo.get_member_by_username(username=username):
+    if member:
         member.update_password(password=new_password)
-        member_repo.save(member)
+        session.add(member)
+        session.commit()
 
         return UserMeResponse(
             id=member.id,
@@ -122,15 +125,18 @@ def update_user_handler(
     status_code=status.HTTP_204_NO_CONTENT,
     response_model=None,
 )
-def delete_user_handler(
+async def delete_user_handler(
     username: str = Depends(authenticate),
-    # session: Session = Depends(get_session),
-    member_repo: MemberRepository = Depends(),
+    session: AsyncSession = Depends(get_async_session),
 ):
-    # member: Member | None = session.query(Member).filter(Member.username == username).first()
+    result = await session.execute(
+        select(Member).filter(Member.username == username)
+    )
+    member: Member | None = result.scalars().first()
 
-    if member := member_repo.get_member_by_username(username=username):
-        member_repo.delete(member)
+    if member:
+        await session.delete(member)
+        await session.commit()
         return
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -142,13 +148,14 @@ def delete_user_handler(
     response_model=UserResponse,
     status_code=status.HTTP_200_OK
 )
-def get_user_handler(
+async def get_user_handler(
     username: str = Path(..., max_length=10, min_length=1),
-    session: Session = Depends(get_session),
+    session: AsyncSession = Depends(get_async_session),
 ):
-    member: Member | None = session.query(Member).filter(
-        Member.username == username,
-    ).first()
+    result = await session.execute(
+        select(Member).filter(Member.username == username)
+    )
+    member: Member | None = result.scalars().first()
     if member:
         return UserResponse(username=member.username)
 
