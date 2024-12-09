@@ -1,11 +1,15 @@
 import asyncio
 from fastapi import APIRouter, Path, Body, status, HTTPException, Depends, BackgroundTasks
 from fastapi.security import HTTPBasicCredentials, HTTPBasic
+from pydantic import constr
 from sqlalchemy.orm import Session
 
-from config.database import get_session
+from config.cache import redis_client
+from config.database.connection import get_session
 from member.authentication import check_password, encode_access_token, authenticate
+from member.email_service import send_otp
 from member.models import Member
+from member.otp_service import create_otp
 from member.repository import MemberRepository
 from member.request import SignUpRequestBody
 from member.response import UserMeResponse, UserResponse, JWTResponse
@@ -34,11 +38,7 @@ async def sign_up_handler(
         send_welcome_email, username=new_member.username
     )
 
-    return UserMeResponse(
-        id=new_member.id,
-        username=new_member.username,
-        password=new_member.password,
-    )
+    return UserMeResponse.model_validate(obj=new_member)
 
 async def send_welcome_email(username):
     await asyncio.sleep(5)
@@ -71,6 +71,82 @@ def login_handler(
         detail="Username or password incorrect",
     )
 
+# OTP 발급 API(POST /members/email/otp)
+# 1) 이미 회원가입한 사용자가 이메일 인증을 위해 이메일 주소 입력
+# 2) 해당 이메일 주소로 OTP 코드(6자리 숫자) 발송
+# 3) 3분 TTL을 걸고 OTP를 Redis 저장
+@router.post(
+    "/email/otp",
+    status_code=status.HTTP_200_OK,
+)
+def create_email_otp_handler(
+        background_tasks: BackgroundTasks,
+        username: str = Depends(authenticate),
+        email: str = Body(
+            ...,
+            pattern=r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$",
+            embed=True,
+            examples=["string@example.com"],
+        ),
+        member_repo: MemberRepository = Depends(),
+):
+    # 1) 3분 TTL을 걸고 OTP를 Redis 저장
+    if not (member := member_repo.get_member_by_username(username=username)):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    # 2) 해당 이메일 주소로 OTP 코드(6자리 숫자) 발송
+    otp: int = create_otp()
+    # redis_client.setex(f"members:{member.id}:email:otp", 3*60, otp)
+    cache_key: str = f"members:{member.id}:email:otp"
+    redis_client.hset(
+        name=cache_key,
+        mapping={"otp": otp, "email": email},
+    )
+    redis_client.expire(cache_key, 3* 60)
+
+    # 3) 해당 이메일 주소로 OTP 코드(6자리 숫자) 발송
+    background_tasks.add_task(
+        send_otp, email=email, otp=otp,
+    )
+
+    return {"detail": "Success"}
+
+# OTP 인증 API(POST /member/email/otp/verify
+# 1) 사용자가 이메일로 받은 OTP를 서버에 전달
+# 2) OTP를 검증(Redis에서 조회)
+@router.post("email/otp/verify")
+def verify_email_otp_handler(
+    username: str = Depends(authenticate),
+    otp: int = Body(..., embed=True, ge=100_000, le=999_999),
+    member_repo: MemberRepository = Depends(),
+):
+    if not (member := member_repo.get_member_by_username(username=username)):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    cached_data = redis_client.hgetall(f"members:{member.id}:email:otp")
+    if not (cached_otp := cached_data.get("otp")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OTP not found",
+        )
+
+    if otp != int(cached_otp):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OTP mismatch",
+        )
+
+    email: str = cached_data.get("email")
+    member.update_email(email=email)
+    member_repo.save(member=member)
+    return UserMeResponse.model_validate(obj=member)
+
 @router.get("/me")
 def get_me_handler(
     username: str = Depends(authenticate),
@@ -80,11 +156,8 @@ def get_me_handler(
     # member: Member | None = member_repo.get_member_by_username(username=username)
 
     if member:= member_repo.get_member_by_username(username=username):
-        return UserMeResponse(
-            id=member.id,
-            username=member.username,
-            password=member.password,
-        )
+        return UserMeResponse.model_validate(obj=member)
+
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
         detail="Username not found",
@@ -107,11 +180,8 @@ def update_user_handler(
         member.update_password(password=new_password)
         member_repo.save(member)
 
-        return UserMeResponse(
-            id=member.id,
-            username=member.username,
-            password=member.password,
-        )
+        return UserMeResponse.model_validate(obj=member)
+
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
         detail="Username not found",

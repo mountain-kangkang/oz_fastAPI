@@ -11,6 +11,13 @@ services:
       - MYSQL_ROOT_PASSWORD=ozcoding_pw
     ports:
       - "9991:3306"
+  cache:
+    image: redis:7.2
+    container_name: ozcoding-redis
+    restart: always
+    ports:
+      - "63790:6379"
+
 
 volumes:
   local_db:

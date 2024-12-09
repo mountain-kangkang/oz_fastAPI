@@ -1,7 +1,7 @@
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
-from config.database import get_session
+from config.database.connection import get_session
 from member.models import Member
 
 

@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Path, Body, status, HTTPException, Depends
 from fastapi.security import HTTPBasicCredentials, HTTPBasic
-from sqlalchemy import select, delete
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config.database_async import get_async_session
+from config.database.connection_async import get_async_session
 from member.authentication import check_password, encode_access_token, authenticate
 from member.models import Member
 from member.request import SignUpRequestBody

@@ -1,16 +1,17 @@
 import re
 from datetime import datetime
 
-import bcrypt
 from sqlalchemy import Column, Integer, String, DateTime
 from member.authentication import hash_password
-from config.database import Base
+from config.database.orm import Base
+
 
 class Member(Base):
     __tablename__ = "service_member"
     id = Column(Integer, primary_key=True)
-    username = Column(String(16), unique=True)
-    password = Column(String(60))   # bcrypt 60자
+    username = Column(String(16), unique=True, nullable=False)
+    email = Column(String(256), nullable=True)
+    password = Column(String(60), nullable=False)   # bcrypt 60자
     created_at = Column(DateTime, default=datetime.now)
 
     @staticmethod
@@ -32,3 +33,6 @@ class Member(Base):
 
         hashed_password = hash_password(password)
         self.password = hashed_password
+
+    def update_email(self, email: str):
+        self.email = email

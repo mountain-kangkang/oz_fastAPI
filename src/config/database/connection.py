@@ -1,12 +1,11 @@
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import sessionmaker
 
-# DATABASE_URL = "mysql+pymysql://root:ozcoding_pw@127.0.0.1:33060/ozcoding"
-# DATABASE_URL = "mysql+pymysql://root:ozcoding_pw@localhost:33060/ozcoding?charset=utf8mb4"
-DATABASE_URL = "mysql+pymysql://root:ozcoding_pw@localhost:9991/ozcoding"
+from config import settings
+
 
 engine = create_engine(
-    DATABASE_URL,
+    settings.database_url,
     pool_size=10,
     max_overflow=20,
     pool_timeout=30,
@@ -20,7 +19,6 @@ SessionFactory = sessionmaker(
     expire_on_commit=False,
 )
 
-Base = declarative_base()
 
 def get_session():
     session = SessionFactory()
