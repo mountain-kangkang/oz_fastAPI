@@ -9,7 +9,7 @@ from main import app
 
 from config.database.connection import get_session
 from config.database.orm import Base
-from member.authentication import encode_access_token
+from member.service.authentication import encode_access_token
 from member.models import Member
 
 

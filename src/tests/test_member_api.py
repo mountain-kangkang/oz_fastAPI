@@ -2,7 +2,6 @@
 #     assert sample_data["hello"] == "world"
 import base64
 
-from member.authentication import encode_access_token
 from member.models import Member
 
 

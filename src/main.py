@@ -2,21 +2,20 @@ import asyncio
 import time
 from datetime import datetime
 
+import httpx
 import requests
 from fastapi import FastAPI, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from starlette.responses import JSONResponse
+from starlette.staticfiles import StaticFiles
 
-from item import router as item_router
-from member import router as member_router
-from member import router_async as member_async_router
-
+from member.api import router as member_router
+from feed import router as feed_router
 app = FastAPI()
-app.include_router(item_router.router)
-app.include_router(member_router.router, prefix="/sync")
-app.include_router(member_async_router.router, prefix="/async")
+app.mount("/static", StaticFiles(directory="feed/posts"))
+app.include_router(member_router.router)
+app.include_router(feed_router.router)
 
 @app.exception_handler(RequestValidationError)
 def validation_exception_handler(request, exc):
@@ -32,6 +31,12 @@ def value_error_handler(request, exc):
         status_code=status.HTTP_400_BAD_REQUEST,
     )
 
+@app.exception_handler(httpx.HTTPStatusError)
+def httpx_status_error_handler(request, exc):
+    return JSONResponse(
+        content={"error": str(exc)},
+        status_code=status.HTTP_400_BAD_REQUEST,
+    )
 
 @app.get("/")
 def health_handler():

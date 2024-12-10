@@ -1,18 +1,21 @@
 import asyncio
+
+import httpx
 from fastapi import APIRouter, Path, Body, status, HTTPException, Depends, BackgroundTasks
 from fastapi.security import HTTPBasicCredentials, HTTPBasic
-from pydantic import constr
 from sqlalchemy.orm import Session
+from fastapi.responses import RedirectResponse
 
+from config import settings
 from config.cache import redis_client
 from config.database.connection import get_session
-from member.authentication import check_password, encode_access_token, authenticate
-from member.email_service import send_otp
-from member.models import Member
-from member.otp_service import create_otp
+from member.service.authentication import check_password, encode_access_token, authenticate
+from member.service.email_service import send_otp
+from member.models import Member, SocialProvider
+from member.service.otp_service import create_otp
 from member.repository import MemberRepository
-from member.request import SignUpRequestBody
-from member.response import UserMeResponse, UserResponse, JWTResponse
+from member.schema.request import SignUpRequestBody
+from member.schema.response import UserMeResponse, UserResponse, JWTResponse
 
 router = APIRouter(prefix="/members", tags=["SnycMember"])
 
@@ -70,6 +73,97 @@ def login_handler(
         status_code=status.HTTP_404_NOT_FOUND,
         detail="Username or password incorrect",
     )
+
+# 1) kakao 로그인 API
+# 사용자가 카카오 로그인 하려고 할 때
+# 사용자를 카카오 redirect => kakao에서 동의화면 보여줌
+@router.get(
+    "/social/kakao/login",
+    status_code=status.HTTP_200_OK,
+)
+def kakao_social_login_handler():
+    return RedirectResponse(
+        url="https://kauth.kakao.com/oauth/authorize"
+            f"?client_id={settings.kakao_rest_api_key}"
+            f"&redirect_uri={settings.kakao_redirect_url}"
+            f"&response_type=code",     # callback: authrization_code
+    )
+
+
+# 2) kakao callback API : 사용자의 인증 동의 후 kakao에서 사용자의 auth_code를 return
+@router.get(
+    "/social/kakao/callback",
+    status_code=status.HTTP_200_OK,
+)
+def kakao_social_callback_handler(
+    code: str,
+    member_repo: MemberRepository = Depends(),
+):
+    # 1) path parameter
+    # /members/social/kakao/callback/{abc} -> auth_code: abc
+
+    # 2) query parameter
+    # GET /members/social/kakao/callback?auth_code=abc
+        # 1) auth_code -> access_token 발급받기
+    response = httpx.post(
+        "https://kauth.kakao.com/oauth/token",
+        data={
+            "grant_type": "authorization_code",
+            "client_id": settings.kakao_rest_api_key,
+            "redirect_uri": settings.kakao_redirect_url,
+            "code": code,
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"},
+    )
+
+    response.raise_for_status()
+    if response.is_success:
+        # 2) access_token -> 사용자 정보 조회
+        access_token: str = response.json().get("access_token")
+
+        profile_response = httpx.get(
+            "https://kapi.kakao.com/v2/user/me",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+        profile_response.raise_for_status()
+        if profile_response.is_success:
+            # 3) 사용자 정보 -> 회원가입/로그인
+            member_profile: dict = profile_response.json()
+            member_subject: str = str(member_profile["id"])
+
+            email: str = profile_response.json()["kakao_account"]["email"]
+            member: Member | None = member_repo.get_member_by_social_email(
+                social_provider=SocialProvider.KAKAO,
+                email=email
+            )
+
+            if member:  # 이미 가입된 사용자 -> 로그인
+                return JWTResponse(access_token=encode_access_token(username=member.username))
+            # 처음 소셜 로그인하는 사용자
+            new_member = Member.social_signup(
+                social_provider=SocialProvider.KAKAO,
+                subject=member_subject,
+                email=email,
+            )
+            member_repo.save(new_member)
+
+            return JWTResponse(
+                access_token=encode_access_token(username=new_member.username),
+            )
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Kakao social login failed",
+    )
+        # 4) JWT 반환
+
+    # 3) request body
+    # autu_code: UserMeRequest
+
+    # 4) header
+
+
 
 # OTP 발급 API(POST /members/email/otp)
 # 1) 이미 회원가입한 사용자가 이메일 인증을 위해 이메일 주소 입력

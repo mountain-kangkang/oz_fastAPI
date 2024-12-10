@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     database_url: str
     redis_host: str
     redis_port: int
+    kakao_rest_api_key: str
+    kakao_redirect_url: str
 
 def get_settings(env: ServerEnv):
     match env:
