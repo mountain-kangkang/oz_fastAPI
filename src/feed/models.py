@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import Column, Integer, Text, String, DateTime, ForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 
 from config.database.orm import Base
 from member.models import Member
@@ -51,7 +51,16 @@ class PostComment(Base):
 
     created_at = Column(DateTime, default=datetime.now, nullable=False)
 
-    parent = relationship("PostComment", remote_side=[id], backref="replies")
+    post = relationship(Post, backref='comments')
+    parent = relationship(
+        "PostComment",
+        remote_side=[id],
+        # 자식 댓글은 삭제되지 않음(자식 댓글이 부모 댓글로 승격)
+        # backref="replies"
+
+        # 부모 객체 삭제시, 자식 객체가 함께 삭제(delete-orphan)
+        backref=backref("replies", cascade="all, delete-orphan")
+    )
 
     @property
     def is_parent(self) -> bool:

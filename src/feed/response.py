@@ -42,6 +42,22 @@ class PostListResponse(BaseModel):
             posts=[PostBriefResponse.build(post=p) for p in posts]
         )
 
+class PostMemberResponse(BaseModel):
+    id: int
+    username: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PostDetailResponse(BaseModel):
+    id: int
+    image: str
+    content: str
+    created_at: datetime
+    user: PostMemberResponse
+    comments: "list[PostCommentResponse]"
+
+    model_config = ConfigDict(from_attributes=True)
 
 class PostCommentResponse(BaseModel):
     id: int
@@ -49,6 +65,7 @@ class PostCommentResponse(BaseModel):
     user_id: int
     content: str
     parent_id: int | None
+    replies: "list[PostCommentResponse]"
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

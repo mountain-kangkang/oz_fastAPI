@@ -8,7 +8,7 @@ from fastapi import APIRouter, status, Depends, UploadFile, File, Form, Body, HT
 from feed.models import Post, PostComment
 from feed.repository import PostRepository, PostCommentRepository
 from feed.request import PostCommentCreateRequestBody
-from feed.response import PostResponse, PostListResponse, PostCommentResponse
+from feed.response import PostResponse, PostListResponse, PostCommentResponse, PostDetailResponse
 from member.models import Member
 from member.repository import MemberRepository
 from member.service.authentication import authenticate
@@ -67,6 +67,25 @@ def get_posts_handler(
     # 2) 그대로 반환
 
     return PostListResponse.build(posts=posts)
+
+# 5) Post 상세 조회
+#   - image, user, like_count, comment_count
+@router.get(
+    "/posts/{post_id}",
+    status_code=status.HTTP_200_OK,
+    response_model=PostDetailResponse,
+)
+def get_post_handler(
+    post_id: int,
+    post_repo: PostRepository = Depends(),
+):
+    if not (post := post_repo.get_post_detail(post_id=post_id)):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Post does not exist"
+        )
+
+    return PostDetailResponse.model_validate(obj=post)
 
 # 3) Post 수정
 @router.patch(
@@ -136,10 +155,6 @@ def delete_post_handler(
     # post_repo.delete_my_post(user_id=user_id, post_id=post_id)
 
 
-
-# 5) Post 상세 조회
-#   - image, user, like_count, comment_count
-
 # 6) Post 댓글 작성
 @router.post(
     "/posts/{post_id}/comments",
@@ -190,3 +205,27 @@ def create_comment_handler(
     comment_repo.save(comment=new_comment)
 
     return PostCommentResponse.model_validate(obj=new_comment)
+
+# 7) Post 댓글 삭제
+@router.delete(
+    "/comment/{comment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_comment_handler(
+        comment_id: int,
+        user_id: int = Depends(authenticate),
+        comment_repo: PostCommentRepository = Depends(),
+):
+    if not (comment := comment_repo.get_comment(comment_id=comment_id)):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Comment does not exist",
+        )
+
+    if comment.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to edit this comment",
+        )
+
+    comment_repo.delete(comment=comment)
