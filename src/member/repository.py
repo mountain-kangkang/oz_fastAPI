@@ -17,6 +17,9 @@ class MemberRepository:
     def get_member_by_username(self, username: str) -> Member | None:
         return self.session.query(Member).filter(Member.username == username).first()
 
+    def get_member_by_id(self, user_id: int) -> Member | None:
+        return self.session.query(Member).filter(Member.id == user_id).first()
+
     def get_member_by_social_email(self, social_provider: SocialProvider, email: str) -> Member | None:
         return self.session.query(Member).filter(
             Member.social_provider == social_provider,

@@ -28,7 +28,7 @@ def get_settings(env: ServerEnv):
             return Settings(_env_file="config/.env.local")
 
 
-EVN = os.getenv("ENV", ServerEnv.LOCAL)
+ENV = os.getenv("ENV", ServerEnv.LOCAL)
 print("!!!!!!!")
-print(EVN)
-settings = get_settings(env=EVN)
+print(ENV)
+settings = get_settings(env=ENV)

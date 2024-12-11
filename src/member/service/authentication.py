@@ -26,11 +26,11 @@ SECRET_KEY = "92424d57e87900cd12b3f8ae43d31a0bfcbd34ea1b0004767ad0f61ab8376803"
 ALGORITHM = "HS256"
 
 class JWTPayLoad(TypedDict):
-    username: str
+    user_id: int
     isa: int
 
-def encode_access_token(username: str) -> str:
-    payload: JWTPayLoad = {"username": username, "isa": int(time.time())}
+def encode_access_token(user_id: int) -> str:
+    payload: JWTPayLoad = {"user_id": user_id, "isa": int(time.time())}
     access_token: str = jwt.encode(
         payload, SECRET_KEY, algorithm=ALGORITHM
     )
@@ -44,7 +44,7 @@ def decode_access_token(access_token: str) -> JWTPayLoad:
 
 def authenticate(
         auth_header: HTTPAuthorizationCredentials = Depends(HTTPBearer())
-) -> str:
+) -> int:
     payload: JWTPayLoad = decode_access_token(auth_header.credentials)
 
     # token 만료 검사
@@ -54,4 +54,4 @@ def authenticate(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token expired",
         )
-    return payload["username"]
+    return payload["user_id"]

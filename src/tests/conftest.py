@@ -70,4 +70,4 @@ def test_user(test_session):
 
 @pytest.fixture(scope="function")
 def test_access_token(test_user):
-    return encode_access_token(username=test_user.username)
+    return encode_access_token(user_id=test_user.id)

@@ -64,7 +64,7 @@ def login_handler(
                 plain_text=credentials.password,
                 hashed_password=member.password,
         ):
-            return JWTResponse(access_token=encode_access_token(username=member.username))
+            return JWTResponse(access_token=encode_access_token(user_id=member.id))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect password",
@@ -139,7 +139,7 @@ def kakao_social_callback_handler(
             )
 
             if member:  # 이미 가입된 사용자 -> 로그인
-                return JWTResponse(access_token=encode_access_token(username=member.username))
+                return JWTResponse(access_token=encode_access_token(user_id=member.id))
             # 처음 소셜 로그인하는 사용자
             new_member = Member.social_signup(
                 social_provider=SocialProvider.KAKAO,
@@ -149,7 +149,7 @@ def kakao_social_callback_handler(
             member_repo.save(new_member)
 
             return JWTResponse(
-                access_token=encode_access_token(username=new_member.username),
+                access_token=encode_access_token(user_id=new_member.id),
             )
 
     raise HTTPException(
@@ -175,7 +175,7 @@ def kakao_social_callback_handler(
 )
 def create_email_otp_handler(
         background_tasks: BackgroundTasks,
-        username: str = Depends(authenticate),
+        user_id: int = Depends(authenticate),
         email: str = Body(
             ...,
             pattern=r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$",
@@ -185,7 +185,7 @@ def create_email_otp_handler(
         member_repo: MemberRepository = Depends(),
 ):
     # 1) 3분 TTL을 걸고 OTP를 Redis 저장
-    if not (member := member_repo.get_member_by_username(username=username)):
+    if not (member := member_repo.get_member_by_id(user_id=user_id)):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
@@ -213,11 +213,11 @@ def create_email_otp_handler(
 # 2) OTP를 검증(Redis에서 조회)
 @router.post("email/otp/verify")
 def verify_email_otp_handler(
-    username: str = Depends(authenticate),
+    user_id: int = Depends(authenticate),
     otp: int = Body(..., embed=True, ge=100_000, le=999_999),
     member_repo: MemberRepository = Depends(),
 ):
-    if not (member := member_repo.get_member_by_username(username=username)):
+    if not (member := member_repo.get_member_by_id(user_id=user_id)):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
@@ -243,13 +243,13 @@ def verify_email_otp_handler(
 
 @router.get("/me")
 def get_me_handler(
-    username: str = Depends(authenticate),
+    user_id: int = Depends(authenticate),
     # session: Session = Depends(get_session),
     member_repo: MemberRepository = Depends(),
 ):
     # member: Member | None = member_repo.get_member_by_username(username=username)
 
-    if member:= member_repo.get_member_by_username(username=username):
+    if member:= member_repo.get_member_by_id(user_id=user_id):
         return UserMeResponse.model_validate(obj=member)
 
     raise HTTPException(
@@ -263,14 +263,14 @@ def get_me_handler(
     status_code=status.HTTP_200_OK
 )
 def update_user_handler(
-    username: str = Depends(authenticate),
+    user_id: int = Depends(authenticate),
     new_password: str = Body(..., embed=True),
     # session: Session = Depends(get_session),
     member_repo: MemberRepository = Depends(),
 ):
     # member: Member | None = member_repo.get_member_by_username(username=username)
 
-    if member := member_repo.get_member_by_username(username=username):
+    if member := member_repo.get_member_by_id(user_id=user_id):
         member.update_password(password=new_password)
         member_repo.save(member)
 
@@ -287,13 +287,13 @@ def update_user_handler(
     response_model=None,
 )
 def delete_user_handler(
-    username: str = Depends(authenticate),
+    user_id: int = Depends(authenticate),
     # session: Session = Depends(get_session),
     member_repo: MemberRepository = Depends(),
 ):
     # member: Member | None = session.query(Member).filter(Member.username == username).first()
 
-    if member := member_repo.get_member_by_username(username=username):
+    if member := member_repo.get_member_by_id(user_id=user_id):
         member_repo.delete(member)
         return
     raise HTTPException(
@@ -309,10 +309,10 @@ def delete_user_handler(
 def get_user_handler(
     username: str = Path(..., max_length=10, min_length=1),
     session: Session = Depends(get_session),
+    member_repo: MemberRepository = Depends(),
 ):
-    member: Member | None = session.query(Member).filter(
-        Member.username == username,
-    ).first()
+
+    member: Member | None = member_repo.get_member_by_username(username=username)
     if member:
         return UserResponse(username=member.username)
 

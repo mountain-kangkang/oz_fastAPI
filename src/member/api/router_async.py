@@ -59,7 +59,7 @@ async def login_handler(
                 plain_text=credentials.password,
                 hashed_password=member.password,
         ):
-            return JWTResponse(access_token=encode_access_token(username=member.username))
+            return JWTResponse(access_token=encode_access_token(user_id=member.id))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect password",
@@ -71,11 +71,11 @@ async def login_handler(
 
 @router.get("/me")
 async def get_me_handler(
-    username: str = Depends(authenticate),
+    user_id: int = Depends(authenticate),
     session: AsyncSession = Depends(get_async_session),
 ):
     result = await session.execute(
-        select(Member).filter(Member.username == username)
+        select(Member).filter(Member.id == user_id)
     )
     member: Member | None = result.scalars().first()
 
@@ -96,12 +96,12 @@ async def get_me_handler(
     status_code=status.HTTP_200_OK
 )
 async def update_user_handler(
-    username: str = Depends(authenticate),
+    user_id: int = Depends(authenticate),
     new_password: str = Body(..., embed=True),
     session: AsyncSession = Depends(get_async_session),
 ):
     result = await session.execute(
-        select(Member).filter(Member.username == username)
+        select(Member).filter(Member.id == user_id)
     )
     member: Member | None = result.scalars().first()
 
@@ -126,11 +126,11 @@ async def update_user_handler(
     response_model=None,
 )
 async def delete_user_handler(
-    username: str = Depends(authenticate),
+    user_id: int = Depends(authenticate),
     session: AsyncSession = Depends(get_async_session),
 ):
     result = await session.execute(
-        select(Member).filter(Member.username == username)
+        select(Member).filter(Member.id == user_id)
     )
     member: Member | None = result.scalars().first()
 
