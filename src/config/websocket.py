@@ -1,14 +1,7 @@
-from typing import TypedDict
-
-from fastapi import WebSocket, WebSocketDisconnect, Depends
+from fastapi import WebSocket, Depends
 
 from chat.models import ChatMessage
 from chat.repository import ChatRepository
-
-#
-# class ConnectionContext(TypedDict):
-#     websocket: WebSocket
-#     user_id: int
 
 class WebSocketConnectionManager:
     def __init__(self):
@@ -30,8 +23,8 @@ class WebSocketConnectionManager:
     async def _send_friend_message(self, websocket: WebSocket, content: str):
         await websocket.send_text(f"Frined >> {content}")
 
-    async def _get_context(self, websocket: WebSocket):
-        room_id, user_id = self.connections[websocket]
+    # async def _get_context(self, websocket: WebSocket):
+    #     room_id, user_id = self.connections[websocket]
 
     async def _init_messages(self, websocket: WebSocket):
         room_id, user_id = self.connections[websocket]
@@ -60,7 +53,7 @@ class WebSocketConnectionManager:
                 else:
                     await self._send_friend_message(websocket=conn, content=content)
 
-    def disconnect(self, websocket: WebSocket):
+    async def disconnect(self, websocket: WebSocket):
         self.connections.pop(websocket)
 
 

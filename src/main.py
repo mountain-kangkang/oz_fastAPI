@@ -11,12 +11,9 @@ from starlette.responses import JSONResponse
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from chat.models import ChatMessage
-from chat.repository import ChatRepository
 from config.websocket import WebSocketConnectionManager, ws_connection_manager
 from member.api import router as member_router
 from feed import router as feed_router
-from member.service.authentication import authenticate
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="feed/posts"))
@@ -160,4 +157,4 @@ async def websocket_handler(
                 content=content,
             )
     except WebSocketDisconnect:         # 웹소켓 연결이 끊기면
-        connection_manager.disconnect(websocket=websocket)    # 클라이언트 연결 목록에서 제거
+        await connection_manager.disconnect(websocket=websocket)    # 클라이언트 연결 목록에서 제거
