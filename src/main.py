@@ -4,15 +4,20 @@ from datetime import datetime
 
 import httpx
 import requests
-from fastapi import FastAPI, status
+from fastapi import FastAPI, status, Depends
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
 from starlette.responses import JSONResponse
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from chat.models import ChatMessage
+from chat.repository import ChatRepository
+from config.websocket import WebSocketConnectionManager, ws_connection_manager
 from member.api import router as member_router
 from feed import router as feed_router
+from member.service.authentication import authenticate
+
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="feed/posts"))
 app.include_router(member_router.router)
@@ -137,20 +142,22 @@ async def async_handler():
 ws_connections = []
 
 @app.websocket(
-    "/ws"
+    "/ws/rooms/{room_id}/{user_id}"
 )
 async def websocket_handler(
+    room_id: int,
+    user_id: int,
     websocket: WebSocket,   # 사용자의 웹소켓 연결(connection)
+    connection_manager: WebSocketConnectionManager = Depends(ws_connection_manager)
 ):
-    await websocket.accept()            # 웹소켓 통신 허용
-    ws_connections.append(websocket)    # 클라이언트 웹소켓 연결 목록에 추가
+    await connection_manager.connect(websocket=websocket, room_id=room_id, user_id=user_id)
 
     try:
         while True:
-            massage = await websocket.receive_text()
-
-            for conn in ws_connections:
-                await conn.send_text(f"from server: {massage}")
-
+            content = await websocket.receive_text()
+            await connection_manager.brodcast(
+                websocket=websocket,
+                content=content,
+            )
     except WebSocketDisconnect:         # 웹소켓 연결이 끊기면
-        ws_connections.remove(websocket)    # 클라이언트 연결 목록에서 제거
+        connection_manager.disconnect(websocket=websocket)    # 클라이언트 연결 목록에서 제거
