@@ -9,6 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
 from starlette.responses import JSONResponse
 from starlette.staticfiles import StaticFiles
+from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from member.api import router as member_router
 from feed import router as feed_router
@@ -132,3 +133,24 @@ async def async_handler():
         "duration": end_time - start_time,
         # "data": response.json()
     }
+
+ws_connections = []
+
+@app.websocket(
+    "/ws"
+)
+async def websocket_handler(
+    websocket: WebSocket,   # 사용자의 웹소켓 연결(connection)
+):
+    await websocket.accept()            # 웹소켓 통신 허용
+    ws_connections.append(websocket)    # 클라이언트 웹소켓 연결 목록에 추가
+
+    try:
+        while True:
+            massage = await websocket.receive_text()
+
+            for conn in ws_connections:
+                await conn.send_text(f"from server: {massage}")
+
+    except WebSocketDisconnect:         # 웹소켓 연결이 끊기면
+        ws_connections.remove(websocket)    # 클라이언트 연결 목록에서 제거
