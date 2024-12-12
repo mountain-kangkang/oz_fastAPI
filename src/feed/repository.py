@@ -2,7 +2,7 @@ from fastapi import Depends
 from sqlalchemy.orm import Session, joinedload, contains_eager
 
 from config.database.connection import get_session
-from feed.models import Post, PostComment
+from feed.models import Post, PostComment, PostLike
 
 
 class PostRepository:
@@ -58,3 +58,20 @@ class PostCommentRepository:
     def delete(self, comment: PostComment) -> None:
         self.session.delete(comment)
         self.session.commit()
+
+class PostLikeRepository:
+    def __init__(self, session: Session = Depends(get_session)):
+        self.session = session
+
+    def save(self, like: PostLike) -> None:
+        self.session.add(like)
+        self.session.commit()
+
+    def rollback(self) -> None:
+        self.session.rollback()
+
+    def get_like_by_user(self, user_id: int, post_id: int) -> PostLike | None:
+        return self.session.query(PostLike).filter_by(user_id=user_id, post_id=post_id).first()
+
+    def delete_like_by_user(self, user_id: int, post_id: int) -> None:
+        self.session.query(PostLike).filter_by(user_id=user_id, post_id=post_id).delete()

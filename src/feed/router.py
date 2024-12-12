@@ -1,14 +1,15 @@
 import os
 import shutil
 import uuid
-from sqlite3 import IntegrityError
 
 from fastapi import APIRouter, status, Depends, UploadFile, File, Form, Body, HTTPException
+from sqlalchemy.exc import IntegrityError
+from starlette.responses import JSONResponse
 
-from feed.models import Post, PostComment
-from feed.repository import PostRepository, PostCommentRepository
+from feed.models import Post, PostComment, PostLike
+from feed.repository import PostRepository, PostCommentRepository, PostLikeRepository
 from feed.request import PostCommentCreateRequestBody
-from feed.response import PostResponse, PostListResponse, PostCommentResponse, PostDetailResponse
+from feed.response import PostResponse, PostListResponse, PostCommentResponse, PostDetailResponse, PostLikeResponse
 from member.models import Member
 from member.repository import MemberRepository
 from member.service.authentication import authenticate
@@ -206,6 +207,49 @@ def create_comment_handler(
 
     return PostCommentResponse.model_validate(obj=new_comment)
 
+# 8) Post 좋아요
+@router.post(
+    "/posts/{post_id}/like",
+    status_code=status.HTTP_201_CREATED,
+    response_model=PostLikeResponse,
+)
+def like_post_handler(
+    post_id: int,
+    user_id: int = Depends(authenticate),
+    like_repo: PostLikeRepository = Depends(),
+):
+    like = PostLike.create(user_id=user_id, post_id=post_id)
+    try:
+        like_repo.save(like=like)
+    except IntegrityError:
+        like_repo.rollback()
+        like = like_repo.get_like_by_user(user_id=user_id, post_id=post_id)
+
+    # 1) like 성공한 경우
+        # 서버 상에서 PostLike() 생성
+        # .save() -> DB에 저장
+        # post_like.id, post_like.create_at 할당
+
+    # 2) 실패한 경우(400 error)
+        # 서버 상에서 PostLike() 생성
+        # .save() -> DB 저장 실패(IntegrityError)
+        # post_like.id, post_like.create_at 할당 실패
+
+    return PostLikeResponse.model_validate(obj=like)
+
+# 9) Post 좋아요 취소
+@router.delete(
+    "/posts/{post_id}/like",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+def cancel_post_like_handler(
+        post_id: int,
+        user_id: int = Depends(authenticate),
+        like_repo: PostLikeRepository = Depends(),
+):
+    like_repo.delete_like_by_user(user_id=user_id, post_id=post_id)
+
 # 7) Post 댓글 삭제
 @router.delete(
     "/comment/{comment_id}",
@@ -229,3 +273,4 @@ def delete_comment_handler(
         )
 
     comment_repo.delete(comment=comment)
+

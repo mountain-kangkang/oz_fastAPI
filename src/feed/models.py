@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, Text, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, Text, String, DateTime, ForeignKey, Boolean, UniqueConstraint
 from sqlalchemy.orm import relationship, backref
 
 from config.database.orm import Base
@@ -69,3 +69,26 @@ class PostComment(Base):
     @classmethod
     def create(cls, user_id: int, post_id: int, content: str, parent_id: int | None):
         return cls(user_id=user_id, post_id=post_id, content=content, parent_id=parent_id)
+
+
+class PostLike(Base):
+    __tablename__ = 'post_like'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('service_member.id'), nullable=False)
+    post_id = Column(Integer, ForeignKey('feed_post.id'), nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'post_id', name='uq_post_like_user_post'),
+    )
+
+    @classmethod
+    def create(cls, user_id: int, post_id: int):
+        return cls(user_id=user_id, post_id=post_id)
+
+    # 사용자가 Like 버튼 -> PostLike(user_id, post_id) 기록
+    # 중복 생성 방지
+    # 사용자가 Like 버튼 취소 -> PostLike(user_id, post_id) 삭제
+
+    # 사용자가 싫어요
